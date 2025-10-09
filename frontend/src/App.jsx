@@ -2,11 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 
-// *****************************************************************
-// *** CRITICAL CHANGE FOR RENDER DEPLOYMENT ***
-// This constant reads the VITE_API_URL environment variable 
-// set on Render. It falls back to localhost for local development.
-// *****************************************************************
+// CRITICAL: Defines the base URL using the Render environment variable.
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'; 
 
 function App() {
@@ -29,15 +25,14 @@ function App() {
     formData.append('file', imageFile);
 
     try {
-      // *****************************************************************
-      // *** API CALL MODIFIED TO USE API_BASE_URL ***
-      // *****************************************************************
+      // Use the deployed API base URL
       const response = await axios.post(`${API_BASE_URL}/api/check-image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(response.data);
     } catch (err) {
-      setError('Analysis failed. The server may be down.');
+      // Improved error message for deployment failures
+      setError('Analysis failed. Check your API URL or console for CORS errors.');
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -71,6 +66,11 @@ function App() {
 
   const startCamera = async () => {
     try {
+      // Check for camera permissions before accessing
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Webcam not supported by this browser.');
+      }
+      
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
       videoRef.current.srcObject = mediaStream;
       setStream(mediaStream);
@@ -78,7 +78,8 @@ function App() {
       setError('');
       setResult(null);
     } catch (err) {
-      setError('Could not access the webcam. Please ensure permissions are granted.');
+      // Better feedback for camera access issues
+      setError('Could not access the webcam. Ensure the site is running on HTTPS and permissions are granted.');
       console.error(err);
     }
   };
@@ -90,7 +91,7 @@ function App() {
     videoRef.current.srcObject = null;
     setStream(null);
     setIsCameraOn(false);
-    removeImage(); // Clear any previous capture
+    removeImage(); 
   };
 
   const handleCapture = () => {
@@ -115,7 +116,6 @@ function App() {
   };
 
   useEffect(() => {
-    // Cleanup function to stop camera when component unmounts or mode changes
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());

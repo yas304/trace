@@ -1,4 +1,3 @@
-# backend/main.py
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,24 +5,14 @@ import shutil
 import os
 from matcher import find_match
 
-# This is the line the error was on. The import above fixes it.
 app = FastAPI(title="TraceOn AI Engine")
 
 # --- CORS Configuration ---
 origins = [
-    "http://localhost:5173",  # Default for React Vite dev server
-    "http://localhost:3000",  # Default for Create React App
-# backend/main.py
-
-# ... inside the CORS Configuration section
-origins = [
     "http://localhost:5173",
     "http://localhost:3000",
-    # Placeholder: Use a name you plan to use for the frontend
+    # CRITICAL FIX: Ensure this exactly matches your deployed Static Site URL on Render
     "https://traceon-frontend.onrender.com", 
-]
-
-
 ]
 
 app.add_middleware(
@@ -33,7 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 UPLOAD_DIR = "uploads"
 # Ensure the directory for temporary uploads exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
