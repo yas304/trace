@@ -2,6 +2,13 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 
+// *****************************************************************
+// *** CRITICAL CHANGE FOR RENDER DEPLOYMENT ***
+// This constant reads the VITE_API_URL environment variable 
+// set on Render. It falls back to localhost for local development.
+// *****************************************************************
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'; 
+
 function App() {
   const [mode, setMode] = useState('upload');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,7 +29,10 @@ function App() {
     formData.append('file', imageFile);
 
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/check-image', formData, {
+      // *****************************************************************
+      // *** API CALL MODIFIED TO USE API_BASE_URL ***
+      // *****************************************************************
+      const response = await axios.post(`${API_BASE_URL}/api/check-image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setResult(response.data);
@@ -35,102 +45,151 @@ function App() {
   };
 
   const onDrop = useCallback(acceptedFiles => {
-    const selectedFile = acceptedFiles[0];
-    if (selectedFile) {
+    if (acceptedFiles.length > 0) {
+      const selectedFile = acceptedFiles[0];
       setFile(selectedFile);
       setImagePreview(URL.createObjectURL(selectedFile));
-      setResult(null);
       setError('');
+      setResult(null);
     }
   }, []);
 
-  const { getRootProps, getInputProps } = useDropzone({ onDrop, accept: { 'image/jpeg': [], 'image/png': [] }, multiple: false });
-  const handleUploadSubmit = (e) => { e.preventDefault(); if (file) analyzeImage(file); else setError('Please select an image.'); };
-  const handleRemoveImage = () => { setFile(null); setImagePreview(null); };
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ onDrop, accept: { 'image/*': [] } });
+
+  const handleUploadSubmit = () => {
+    if (file) {
+      analyzeImage(file);
+    }
+  };
+
+  const removeImage = () => {
+    setFile(null);
+    setImagePreview(null);
+    setResult(null);
+    setError('');
+  };
 
   const startCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      videoRef.current.srcObject = mediaStream;
       setStream(mediaStream);
-      if (videoRef.current) videoRef.current.srcObject = mediaStream;
       setIsCameraOn(true);
+      setError('');
+      setResult(null);
     } catch (err) {
-      setError("Could not access webcam. Please check permissions.");
+      setError('Could not access the webcam. Please ensure permissions are granted.');
+      console.error(err);
     }
   };
 
   const stopCamera = () => {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
-      setIsCameraOn(false);
-      setStream(null);
     }
+    videoRef.current.srcObject = null;
+    setStream(null);
+    setIsCameraOn(false);
+    removeImage(); // Clear any previous capture
   };
 
   const handleCapture = () => {
     if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      canvas.getContext('2d').drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(blob => {
-        const imageFile = new File([blob], "webcam_capture.jpg", { type: "image/jpeg" });
-        analyzeImage(imageFile);
-      }, 'image/jpeg');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      // Mirror the canvas context to match the video feed view
+      context.translate(canvas.width, 0);
+      context.scale(-1, 1);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob((blob) => {
+        const capturedFile = new File([blob], 'captured_image.png', { type: 'image/png' });
+        setFile(capturedFile);
+        setImagePreview(URL.createObjectURL(capturedFile));
+        analyzeImage(capturedFile);
+      }, 'image/png');
     }
   };
 
-  useEffect(() => { return () => { if (stream) stream.getTracks().forEach(track => track.stop()); }; }, [stream, mode]);
+  useEffect(() => {
+    // Cleanup function to stop camera when component unmounts or mode changes
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const renderResultCard = () => {
     if (!result) return null;
-    
+
     if (result.match) {
-      const { name, status, last_seen_location } = result.data;
+      const data = result.data;
       return (
         <div className="result-card success">
-          <div className="result-title">Match Found</div>
-          <div className="result-detail"><strong>Name:</strong> {name}</div>
-          <div className="result-detail"><strong>Status:</strong> {status}</div>
-          <div className="result-detail"><strong>Last Seen:</strong> {last_seen_location}</div>
+          <p><strong>MATCH FOUND:</strong> {data.name}</p>
+          <p>Status: {data.status}</p>
+          <p>Last Seen: {data.last_seen_location}</p>
         </div>
       );
     } else {
       return (
         <div className="result-card no-match">
-          <div className="result-title">No Match Found</div>
-          <p>{result.message}</p>
+          <p>{result.message || 'No match found in the database.'}</p>
         </div>
       );
     }
   };
-  
+
+  const switchMode = (newMode) => {
+    if (isCameraOn) {
+      stopCamera();
+    }
+    setMode(newMode);
+    removeImage();
+  };
+
   return (
     <div className="app-container">
-      <div className="card">
+      <div className="card-wrapper">
         <header className="card-header">
-          <div className="logo">TR</div>
           <h1>TraceOn AI</h1>
-          <p>AI-Powered Missing Person Identification</p>
+          <p className="subtitle">Facial Recognition Analysis Engine</p>
         </header>
 
-        <div className="tabs">
-          <button onClick={() => setMode('upload')} className={`tab-button ${mode === 'upload' ? 'active' : ''}`}>Upload Photo</button>
-          <button onClick={() => setMode('webcam')} className={`tab-button ${mode === 'webcam' ? 'active' : ''}`}>Live Cam</button>
-        </div>
+        <nav className="mode-selector">
+          <button 
+            className={`mode-btn ${mode === 'upload' ? 'active' : ''}`}
+            onClick={() => switchMode('upload')}
+          >
+            Upload Image
+          </button>
+          <button 
+            className={`mode-btn ${mode === 'webcam' ? 'active' : ''}`}
+            onClick={() => switchMode('webcam')}
+          >
+            Webcam Capture
+          </button>
+        </nav>
 
-        <main className="card-body">
+        <main className="card-main">
           {mode === 'upload' && (
             <>
-              {!imagePreview && (
-                <div {...getRootProps({ className: `dropzone` })}>
-                  <input {...getInputProps()} /> <p>Drag & drop photo here, or click to select</p>
+              {!file ? (
+                <div {...getRootProps()} className={`dropzone ${isDragActive ? 'drag-active' : ''}`}>
+                  <input {...getInputProps()} />
+                  {isDragActive ? 
+                    <p>Drop the file here ...</p> : 
+                    <p>Drag 'n' drop an image here, or click to select file</p>
+                  }
                 </div>
-              )}
-              {imagePreview && (
-                <div className="preview-container">
+              ) : (
+                <div className="image-preview-container">
                   <img src={imagePreview} alt="Preview" className="image-preview" />
-                  <button onClick={handleRemoveImage} className="remove-btn" title="Remove">×</button>
+                  <button onClick={removeImage} className="remove-btn" title="Remove">×</button>
                 </div>
               )}
               <button onClick={handleUploadSubmit} disabled={isLoading || !file} className="submit-btn">{isLoading ? 'Analyzing...' : 'Find Match'}</button>

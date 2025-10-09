@@ -1,0 +1,12 @@
+# --- AI and Core Dependencies ---
+face_recognition
+numpy
+Pillow
+# Note dlib is a dependency of face_recognition and is compiled 
+# by the Dockerfile using system dependencies (cmake, build-essential).
+
+# --- FastAPI and Server Dependencies ---
+fastapi
+uvicorn
+gunicorn
+python-multipart

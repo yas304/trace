@@ -13,6 +13,17 @@ app = FastAPI(title="TraceOn AI Engine")
 origins = [
     "http://localhost:5173",  # Default for React Vite dev server
     "http://localhost:3000",  # Default for Create React App
+# backend/main.py
+
+# ... inside the CORS Configuration section
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    # Placeholder: Use a name you plan to use for the frontend
+    "https://traceon-frontend.onrender.com", 
+]
+
+
 ]
 
 app.add_middleware(
